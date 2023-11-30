@@ -38,13 +38,16 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    // await client.connect();
+    await client.connect();
 
     // =================================================================
     // all collections
     const userCollection = client.db("parcelDB").collection("users");
     const bookingCollection = client.db("parcelDB").collection("bookings");
     const paymentCollection = client.db("parcelDB").collection("payments");
+    const processDeliveryCollection = client
+      .db("parcelDB")
+      .collection("process");
 
     // ---------- Verifiy token & Verify admin API start -----------
     // Verify token middlewares
@@ -80,7 +83,7 @@ async function run() {
 
     // ---------- Bookings API start -----------
     // Find all bookings for show total bookings information
-    app.get('/bookings', async(req, res) => {
+    app.get("/bookings", async (req, res) => {
       const result = await bookingCollection.find().toArray();
       res.send(result);
     });
@@ -94,9 +97,9 @@ async function run() {
     });
 
     // Update 1 Booking by _id
-    app.get('/bookings/:id', async(req, res) => {
+    app.get("/bookings/:id", async (req, res) => {
       const id = req.params.id;
-      const query = {_id: new ObjectId(id)};
+      const query = { _id: new ObjectId(id) };
       const result = await bookingCollection.findOne(query);
       res.send(result);
     });
@@ -115,7 +118,45 @@ async function run() {
       const result = await bookingCollection.deleteOne(query);
       res.send(result);
     });
+
+    
     // ---------- Bookings API end -----------
+    
+    // ---------- Bookings proccess API start -----------
+    // Booking processing finished
+    app.patch("/bookings/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        console.log("Booking ID:", id);
+        const deliveryInfo = req.body;
+        console.log("Delivery Info:", deliveryInfo);
+
+        const filter = { _id: new ObjectId(id) };
+        const options = { upsert: true };
+        const updatedDoc = {
+          $set: {
+            delivery_name: deliveryInfo?.name,
+            delivery_email: deliveryInfo?.email,
+            delivery_photo: deliveryInfo?.photo,
+            delivery_role: deliveryInfo?.role,
+            delivery_id: deliveryInfo?.approximate,
+            delivery_id: deliveryInfo?._id,
+          },
+        };
+
+        const result = await bookingCollection.updateOne(
+          filter,
+          updatedDoc,
+          options
+        );
+        console.log("Update Result:", result);
+
+        res.send(result);
+      } catch (error) {
+        console.error("Update Error:", error);
+        res.status(500).json({ message: "Server Error" });
+      }
+    });
 
     // ---------- Users API start -----------
     // user related api call / user collection
@@ -123,7 +164,7 @@ async function run() {
     // Check user roles
     app.get("/users/:role", async (req, res) => {
       const role = req.params.role;
-      const query = {role: role};
+      const query = { role: role };
       const result = await userCollection.find(query).toArray();
       res.send(result);
     });
@@ -135,10 +176,10 @@ async function run() {
     });
 
     // Update user profile name and image or etc...
-    app.patch('/users/:id', async (req, res) => {
+    app.patch("/users/:id", async (req, res) => {
       const info = req.body;
       const id = req.params.id;
-      const filter = {_id: new ObjectId(id)};
+      const filter = { _id: new ObjectId(id) };
       const options = { upsert: true };
       const updateDoc = {
         $set: {
@@ -247,33 +288,33 @@ async function run() {
 
     // Stripe API codes for payments
     app.post("/create-payment-intent", async (req, res) => {
-      const {price} = req.body;
+      const { price } = req.body;
       const amount = parseInt(price * 100);
 
       // create payment
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,
-        currency: 'usd',
-        payment_method_types: ['card']
+        currency: "usd",
+        payment_method_types: ["card"],
       });
 
       res.send({
-        clientSecret: paymentIntent.client_secret
-      })
+        clientSecret: paymentIntent.client_secret,
+      });
     });
 
     // Confirm payment API
-    app.post('/payments', verifyToken, async (req, res) => {
+    app.post("/payments", verifyToken, async (req, res) => {
       const payment = req.body;
       const paymentResult = await paymentCollection.insertOne(payment);
-      console.log('Payment info', paymentResult);
+      console.log("Payment info", paymentResult);
       res.send(paymentResult);
     });
 
     // =================================================================
 
     // Send a ping to confirm a successful connection
-    // await client.db("admin").command({ ping: 1 });
+    await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
